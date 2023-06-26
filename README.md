@@ -20,6 +20,15 @@ After that, install required packages by calling
 
 Finally, in the root directory, run the command `streamlit run Login.py`.
 
+# Testing Changestreams
+
+There are two files of interest:
+
+- `test_data_editor.py` allows you to edit a dataframe
+- `test_data_viewer.py` allows you to view changes to the dataframe in real-time, receiving changes made from `test_data_editor.py`
+
+The other files that are prefixed with `test` were created while testing Streamlit's compatability with MongoDB.
+
 # Additional Information for Developers
 
 ## Frontend
