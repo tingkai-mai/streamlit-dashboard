@@ -99,8 +99,8 @@ def get_changes(operation: str, df: pd.DataFrame, client):
     - "added_rows"
     - "deleted_rows"
     """
-    target_data = st.session_state["data_editor"][operation]
     if operation == "edited_rows":
+        target_data = st.session_state["data_editor"][operation]
         indexes = list(target_data.keys())
         current_data = get_json(df.loc[list(map(lambda x: int(x), indexes))])
         new_data = []
@@ -113,14 +113,15 @@ def get_changes(operation: str, df: pd.DataFrame, client):
         # Only add the row once ALL data in every column is filled up
         columns = set(df.columns)
         columns.remove("_id")
-        for data in target_data:
+        for data in st.session_state["data_editor"][operation]:
             if set(data.keys()) == columns:
                 perform_add(data, client)
-        return target_data
+        return st.session_state["data_editor"][operation]
 
     elif operation == "deleted_rows":
+        target_data = st.session_state["data_editor"][operation]
         for data in target_data:
-            perform_delete(df.loc[data], client)
+            perform_delete(df.iloc[data], client)
         return target_data
 
     raise Exception("Invalid operation")
@@ -171,7 +172,7 @@ def main():
 
     st.write("Deleted rows:")
     st.write(deleted_rows)
-    print("=====================================================")
+    print("=====================================")
 
 
 main()
