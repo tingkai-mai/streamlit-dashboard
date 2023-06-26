@@ -6,7 +6,6 @@ from bson.objectid import ObjectId
 from saved_state import SavedState
 
 import streamlit as st
-import asyncio
 
 
 @st.cache_resource
@@ -14,7 +13,6 @@ def init_connection():
     db_connection_string = "mongodb+srv://Mai:f3ROO53l@cluster0.pjzokgh.mongodb.net/"
     client = pymongo.MongoClient(db_connection_string)
     animals_client = client["sample_database"]["animals_collection"]
-    # cleanup_data(animals_client)
     initialize_data(animals_client)
     return animals_client
 
@@ -70,8 +68,9 @@ def cleanup_data(client):
     client.delete_many({})
 
 
-def load_data(client):
-    json_data = list(client.find())
+@st.cache_data
+def load_data(_client):
+    json_data = list(_client.find())
     df = pd.DataFrame(json_data)
     return df
 
@@ -87,14 +86,13 @@ def get_json(data):
 
 
 def get_updated_json(data, new_values):
-    """Stop here: Was trying to update the affected data in the `data` dict with those in new_values"""
     for k, v in new_values.items():
         if k in data:
             data[k] = v
     return data
 
 
-async def get_changes(operation: str, df: pd.DataFrame, client):
+def get_changes(operation: str, df: pd.DataFrame, client):
     """Returns a list of affected rows after a specific operation
     An operation can be three states:
     - "edited_rows"
@@ -108,12 +106,13 @@ async def get_changes(operation: str, df: pd.DataFrame, client):
         new_data = []
         for _, data in enumerate(current_data):
             new_data.append(get_updated_json(data, target_data[data["index"]]))
-        await perform_edit(new_data, client)
+        perform_edit(new_data, client)
         return new_data
 
     elif operation == "added_rows":
         # Only add the row once ALL data in every column is filled up
         columns = set(df.columns)
+        columns.remove("_id")
         for data in target_data:
             if set(data.keys()) == columns:
                 perform_add(data, client)
@@ -121,14 +120,13 @@ async def get_changes(operation: str, df: pd.DataFrame, client):
 
     elif operation == "deleted_rows":
         for data in target_data:
-            perform_delete(data)
+            perform_delete(df.loc[data], client)
         return target_data
 
     raise Exception("Invalid operation")
 
 
-async def perform_edit(edited_data, client):
-    print(edited_data)
+def perform_edit(edited_data, client):
     for data in edited_data:
         document_id_string = data["_id"]["$oid"]
         document_id = ObjectId(document_id_string)
@@ -138,50 +136,42 @@ async def perform_edit(edited_data, client):
             json.dumps({key: value for key, value in data.items() if key != "_id"})
         )
         update_op = {"$set": new_data}
-        await client.update_one({"_id": document_id}, update_op)
+        client.update_one({"_id": document_id}, update_op)
 
 
 def perform_add(new_data, client):
     new_data = json.loads(
-        json.dumps({key: value for key, value in data.items() if key != "_id"})
+        json.dumps({key: value for key, value in new_data.items() if key != "_id"})
     )
     client.insert_one(new_data)
 
 
 def perform_delete(deleted_data, client):
-    document_id = ObjectId(deleted_data["_id"]["$oid"])
+    document_id = ObjectId(deleted_data["_id"])
     client.delete_one({"_id": document_id})
 
 
-def init_storage():
-    st.session_state["edited_rows"] = dict()
+def main():
+    client = init_connection()
+    df = load_data(client)
+    st.data_editor(df, key="data_editor", num_rows="dynamic")
+
+    edited_rows = get_changes("edited_rows", df, client)
+    added_rows = get_changes("added_rows", df, client)
+    deleted_rows = get_changes("deleted_rows", df, client)
+
+    st.write("Here's the session state:")
+    st.write(st.session_state["data_editor"])
+
+    st.write("Edited rows:")
+    st.write(edited_rows)
+
+    st.write("Added rows:")
+    st.write(added_rows)
+
+    st.write("Deleted rows:")
+    st.write(deleted_rows)
+    print("=====================================================")
 
 
-client = init_connection()
-init_storage()
-
-df = load_data(client)
-
-
-table = st.data_editor(df, key="data_editor", num_rows="dynamic")
-edited_rows = get_changes("edited_rows", df, client)
-added_rows = get_changes("added_rows", df, client)
-deleted_rows = get_changes("deleted_rows", df, client)
-
-df = load_data(client)
-
-st.write("Here's the session state:")
-st.write(st.session_state["data_editor"])
-
-st.write("Global Session State: edited_rows")
-st.write(st.session_state["edited_rows"])
-
-st.write("Edited rows:")
-st.write(edited_rows)
-
-st.write("Added rows:")
-st.write(added_rows)
-
-st.write("Deleted rows:")
-st.write(deleted_rows)
-print("=====================================================")
+main()
